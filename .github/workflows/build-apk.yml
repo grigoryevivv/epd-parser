@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Позволяет запускать вручную
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,20 +26,18 @@ jobs:
         pip install buildozer cython==0.29.36
         sudo apt-get update
         sudo apt-get install -y openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
-   
-    - name: Accept Android SDK licenses
-      run: |
-        yes | sdkmanager --licenses || true
-        sdkmanager "build-tools;34.0.0"
-        
+
     - name: Build APK with Buildozer
       working-directory: ./mobile
       run: |
         echo "Building from mobile directory"
         ls -la
-        buildozer android debug
+        # Buildozer с автоматическим принятием лицензий
+        yes | buildozer android debug || buildozer android debug
       env:
         BUILDOZER_LOG_LEVEL: 2
+        ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
+        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
@@ -55,3 +53,4 @@ jobs:
         files: mobile/bin/*.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
