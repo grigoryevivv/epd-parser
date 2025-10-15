@@ -26,7 +26,12 @@ jobs:
         pip install buildozer cython==0.29.36
         sudo apt-get update
         sudo apt-get install -y openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
-
+   
+    - name: Accept Android SDK licenses
+      run: |
+        yes | sdkmanager --licenses || true
+        sdkmanager "build-tools;34.0.0"
+        
     - name: Build APK with Buildozer
       working-directory: ./mobile
       run: |
