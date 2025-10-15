@@ -1,0 +1,10 @@
+# Requirements для мобильной версии (Kivy)
+kivy==2.3.0
+PyPDF2==3.0.1
+pandas==2.1.4
+openpyxl==3.1.2
+python-dateutil==2.8.2
+
+# Для Android
+pyjnius==1.6.1
+plyer==2.1.0
