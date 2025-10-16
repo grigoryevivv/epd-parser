@@ -10,47 +10,117 @@ on:
 jobs:
   build:
     runs-on: ubuntu-20.04
-
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+    
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-
-    - name: Install dependencies
+        cache: 'pip'
+    
+    # Кеширование pip пакетов
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    # Кеширование Buildozer (это сэкономит много времени!)
+    - name: Cache Buildozer
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.buildozer
+          mobile/.buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('mobile/buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+    
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install buildozer cython==0.29.36
+    
+    - name: Install system dependencies
+      run: |
         sudo apt-get update
-        sudo apt-get install -y openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
-
+        sudo apt-get install -y \
+          openjdk-17-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          build-essential \
+          git \
+          zip \
+          unzip
+    
+    - name: Accept Android SDK licenses
+      working-directory: ./mobile
+      run: |
+        yes | buildozer android debug || true
+      env:
+        BUILDOZER_LOG_LEVEL: 2
+      continue-on-error: true
+    
     - name: Build APK with Buildozer
       working-directory: ./mobile
       run: |
         echo "Building from mobile directory"
         ls -la
-        # Buildozer с автоматическим принятием лицензий
-        yes | buildozer android debug || buildozer android debug
+        buildozer android debug
       env:
         BUILDOZER_LOG_LEVEL: 2
         ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
         ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
-
-    - name: Upload APK
+        ANDROID_NDK_HOME: /home/runner/.buildozer/android/platform/android-ndk
+    
+    - name: Verify APK exists
+      run: |
+        if ls mobile/bin/*.apk 1> /dev/null 2>&1; then
+          echo "✓ APK found:"
+          ls -lh mobile/bin/*.apk
+        else
+          echo "✗ APK not found!"
+          exit 1
+        fi
+    
+    - name: Get build info
+      id: build_info
+      run: |
+        echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+        echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+    
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: epdparser-debug-apk
+        name: epdparser-debug-${{ steps.build_info.outputs.timestamp }}-${{ steps.build_info.outputs.short_sha }}
         path: mobile/bin/*.apk
         retention-days: 30
-
+    
     - name: Create Release (on tag)
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
         files: mobile/bin/*.apk
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+    
+    # Опционально: отправка в Telegram при успешной сборке
+    # - name: Send Telegram notification
+    #   if: success()
+    #   run: |
+    #     curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+    #       -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+    #       -d text="✅ APK успешно собран! Commit: ${{ steps.build_info.outputs.short_sha }}"
