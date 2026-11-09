@@ -1,0 +1,67 @@
+name: Build PDF2DWG exe
+
+on:
+  push:
+    paths:
+      - "pdf2dwg/**"
+      - ".github/workflows/build-pdf2dwg.yml"
+    tags:
+      - "pdf2dwg-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: pdf2dwg
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pdf2dwg/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Smoke test converter
+        shell: python
+        run: |
+          import sys, pymupdf, ezdxf
+          sys.path.insert(0, ".")
+          from converter import ConvertOptions, convert_pdf
+          d = pymupdf.open(); p = d.new_page()
+          p.draw_rect((50, 50, 200, 150), color=(1, 0, 0), fill=(0, 0, 1))
+          p.draw_circle((300, 300), 40)
+          p.insert_text((60, 400), "Test 123", fontsize=12)
+          d.save("smoke.pdf")
+          r = convert_pdf("smoke.pdf", "smoke_out", ConvertOptions(out_format="DXF", scale=100))
+          msp = ezdxf.readfile(r.outputs[0]).modelspace()
+          assert r.stats.polylines >= 2 and r.stats.texts == 1 and r.stats.hatches == 1, r.stats
+          print("OK", r.stats)
+
+      - name: Build exe
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name PDF2DWG --icon icon.ico --add-data "icon.ico;."
+          --collect-all customtkinter --collect-all tkinterdnd2
+          app.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PDF2DWG-windows
+          path: pdf2dwg/dist/PDF2DWG.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/pdf2dwg-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pdf2dwg/dist/PDF2DWG.exe
